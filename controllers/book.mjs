@@ -1,5 +1,6 @@
 import Book from "../models/book.mjs";
 import fs from "fs";
+import mongoSanitize from "express-mongo-sanitize";
 
 export function getAll(req, res, next) {
 	Book.find()
@@ -15,8 +16,8 @@ export function getAll(req, res, next) {
 }
 
 export function getById(req, res, next) {
-	console.log(req.params);
-	Book.findOne({ _id: req.params.id })
+	const id = req.params.id;
+	Book.findOne({ _id: id })
 		.then((book) => {
 			if (book === null) {
 				return res.status(404).json({ message: "Livre non trouvé" });
@@ -31,7 +32,6 @@ export function getById(req, res, next) {
 //Renvoie un tableau des 3 livres de la base de données ayant la meilleure note moyenne
 
 export function getBestRating(req, res, next) {
-	console.log("getBestRating");
 	Book.find()
 		.sort({ averageRating: -1 })
 		.limit(3)
@@ -49,7 +49,8 @@ export function getBestRating(req, res, next) {
 // Capture et enregistre l'image, analyse le livre transformé en chaîne de caractères, et l'enregistre dans la base de données en définissant correctement son ImageUrl. Initialise la note moyenne du livre à 0 et le rating avec un tableau vide. Remarquez que le corps de la demande initiale est vide ; lorsque Multer est ajouté, il renvoie une chaîne pour le corps de la demande en fonction des données soumises avec le fichier.
 
 export function create(req, res, next) {
-	const bookObject = JSON.parse(req.body.book);
+	const sanitizeBook = mongoSanitize.sanitize(req.body.book); 
+	const bookObject = JSON.parse(sanitizeBook);
 	delete bookObject.userId;
 	bookObject.userId = req.auth.userId;
 
@@ -58,10 +59,14 @@ export function create(req, res, next) {
 		return res.status(400).json({ message: "Year must be a number" });
 	}
 
+	// Verify Date
+	if (bookObject.year < 0 || bookObject.year > new Date().getFullYear()) {
+		return res.status(400).json({ message: "Year must be a valid year" });
+	}
+
 	const book = new Book({
 		...bookObject,
-
-		imageUrl: `${req.protocol}://${req.get("host")}/images/${req.file.filename}`,
+	 	imageUrl: `${req.protocol}://${req.get("host")}/images/${req.file.filename}`,
 	});
 
 	book.save()
@@ -72,20 +77,24 @@ export function create(req, res, next) {
 }
 
 export function updateById(req, res, next) {
-	const bookObject = req.file
+	const bodySanitize = mongoSanitize.sanitize(req.body);
+	const authSanitize = mongoSanitize.sanitize(req.auth); 
+	const paramsSanitize = mongoSanitize.sanitize(req.params);
+	const fileSanitize = mongoSanitize.sanitize(req.file);
+	const bookObject = bodySanitize.file
 		? {
-				...JSON.parse(req.body.book),
-				imageUrl: `${req.protocol}://${req.get("host")}/images/${req.file.filename}`,
+				...JSON.parse(bodySanitize.book),
+				imageUrl: `${req.protocol}://${req.get("host")}/images/${fileSanitize.filename}`,
 		  }
-		: { ...req.body };
+		: { ...bodySanitize };
 
-	Book.findOne({ _id: req.params.id })
+	Book.findOne({ _id: paramsSanitize.id })
 		.then((book) => {
-			if (book.userId != req.auth.userId) {
+			if (book.userId != authSanitize.userId) {
 				res.status(401).json({ message: "Not authorized" });
 				console.log("Not authorized");
 			} else {
-				Book.updateOne({ id: req.params.id }, { ...bookObject, id: req.params.id })
+				Book.updateOne({ id: paramsSanitize.id }, { ...bookObject, id: paramsSanitize.id })
 					.then(() => res.status(200).json({ message: "Livre modifié!" }))
 					.catch((error) => {
 						res.status(401).json({ error }), console.log(error);
@@ -99,15 +108,16 @@ export function updateById(req, res, next) {
 }
 
 export function deleteById(req, res, next) {
-	Book.findOne({ _id: req.params.id })
+	const sanitizerReq = mongoSanitize.sanitize(req);
+	Book.findOne({ _id: sanitizerReq.params.id })
 		.then((book) => {
-			if (book.userId != req.auth.userId) {
+			if (book.userId != sanitizerReq.auth.userId) {
 				console.log("Not authorized");
 				res.status(401).json({ message: "Not authorized" });
 			} else {
 				const filename = book.imageUrl.split("/images/")[1];
 				fs.unlink(`images/${filename}`, () => {
-					Book.deleteOne({ _id: req.params.id })
+					Book.deleteOne({ _id: sanitizerReq.params.id })
 						.then(() => {
 							res.status(200).json({ message: "Objet supprimé !" });
 						})
@@ -122,26 +132,27 @@ export function deleteById(req, res, next) {
 		});
 }
 export function rateById(req, res, next) {
-	Book.findOne({ _id: req.params.id })
+	const sanitizerReq = mongoSanitize.sanitize(req);
+	Book.findOne({ _id: sanitizerReq.params.id })
 		.then((book) => {
 
 			//Check si l'utilisateur a déjà noté le livre
-			const alreadyRated = book.ratings.find((rating) => rating.userId === req.auth.userId);
+			const alreadyRated = book.ratings.find((rating) => rating.userId === sanitizerReq.auth.userId);
 			if (alreadyRated) {
 				return res.status(400).json({ message: "Vous avez déjà noté ce livre" });
 			}
 
 			//Check si la note est comprise entre 0 et 5
-			if (req.body.rating < 0 || req.body.rating > 5) {
+			if (sanitizerReq.body.rating < 0 || sanitizerReq.body.rating > 5) {
 				return res.status(400).json({ message: "La note doit être comprise entre 0 et 5" });
 			}
 
-			const rate = { userId: req.auth.userId, grade: req.body.rating };
+			const rate = { userId: sanitizerReq.auth.userId, grade: sanitizerReq.body.rating };
 			book.ratings.push(rate);
 
 			const averageRate = book.ratings.reduce((acc, rating) => acc + rating.grade, 0) / book.ratings.length;
 
-			Book.updateOne({ _id: req.params.id }, { ratings: book.ratings, averageRating: averageRate.toFixed(1) })
+			Book.updateOne({ _id: sanitizerReq.params.id }, { ratings: book.ratings, averageRating: averageRate.toFixed(1) })
 				.then(() => {
 					res.status(200).json(book);
 				})

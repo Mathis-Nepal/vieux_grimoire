@@ -1,5 +1,8 @@
 import { createServer } from 'http';
 import app from './app.mjs';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const normalizePort = val => {
   const port = parseInt(val, 10);
