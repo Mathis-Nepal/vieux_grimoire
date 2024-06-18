@@ -1,17 +1,14 @@
 import bcrypt from "bcrypt";
 import User from "../models/user.mjs";
 import jwt from "jsonwebtoken";
-import mongoSanitize from "express-mongo-sanitize";
 
 export function signUp(req, res, next) {
-	const email = mongoSanitize.sanitize(req.body.email);
-	const password = mongoSanitize.sanitize(req.body.password);
 
 	bcrypt
-		.hash(password, 10)
+		.hash(req.body.password, 10)
 		.then((hash) => {
 			const user = new User({
-				email: email,
+				email: req.body.email,
 				password: hash,
 			});
 			user.save()
@@ -25,15 +22,13 @@ export function signUp(req, res, next) {
 }
 
 export function login(req, res, next) {
-    const email = mongoSanitize.sanitize(req.body.email);
-    const password = mongoSanitize.sanitize(req.body.password);
-	User.findOne({ email: email })
+	User.findOne({ email: req.body.email })
 		.then((user) => {
 			if (!user) {
 				return res.status(401).json({ message: "Email or password are not correct" });
 			}
 			bcrypt
-				.compare(password, user.password)
+				.compare(req.body.password, user.password)
 				.then((valid) => {
 					if (!valid) {
 						return res.status(401).json({ message: "Email or password are not correct" });

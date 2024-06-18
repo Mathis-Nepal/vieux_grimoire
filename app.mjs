@@ -15,10 +15,12 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
+
 app.use(cors());
 
 app.use(helmet({crossOriginEmbedderPolicy: false,crossOriginResourcePolicy: false}));
 
+app.use(mongoSanitize());
 
 connectDb();
 
@@ -43,9 +45,11 @@ app.use(bodyParser.json());
 
 //print the request
 app.use((req, res, next) => {
-	console.log(req);
+	// console.log(req);
 	next();
 });
+
+
 
 app.use("/api/auth", auth);
 app.use("/api/books", books);
