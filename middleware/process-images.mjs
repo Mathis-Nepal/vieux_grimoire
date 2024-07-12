@@ -15,6 +15,8 @@ const processImage = (req, res, next) => {
   const filePath = path.join(__dirname, '../images', req.file.filename);
   const outputFilePath = path.join(__dirname, '../images', 'processed-' + req.file.filename);
 
+  sharp.cache(false)
+
   sharp(filePath)
     .toFormat('webp')
     .resize(500, 500) // Redimensionnez l'image selon vos besoins
